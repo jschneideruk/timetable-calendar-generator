@@ -61,7 +61,9 @@ namespace makecal
         var throttler = new SemaphoreSlim(initialCount: simultaneousRequests);
         
         var people = students.Concat(teachers).ToList();
-       
+        
+        Console.SetBufferSize(Console.BufferWidth, Math.Max(headerHeight + people.Count + 1, Console.BufferHeight));
+        
         for (var i = 0; i < people.Count; i++)
         {
           var countLocal = i;
