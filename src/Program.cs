@@ -59,9 +59,9 @@ namespace makecal
 
         var tasks = new List<Task>();
         var throttler = new SemaphoreSlim(initialCount: simultaneousRequests);
-        
+
         var people = students.Concat(teachers).ToList();
-        
+
         Console.SetBufferSize(Console.BufferWidth, Math.Max(headerHeight + people.Count + 1, Console.BufferHeight));
         
         for (var i = 0; i < people.Count; i++)
@@ -140,7 +140,15 @@ namespace makecal
             continue;
           }
           var date = DateTime.ParseExact(record[0], "dd-MMM-yy", null);
-          settings.DayTypes.Add(date, record[1] + date.DayOfWeek.ToString("G").Substring(0, 3));
+          var dayOfWeek = date.ToString("ddd");
+          if (record.Count > 1)
+          {
+            settings.DayTypes.Add(date, record[1] + dayOfWeek);
+          }
+          else
+          {
+            settings.DayTypes.Add(date, dayOfWeek);
+          }
         }
       }
       return settings;
