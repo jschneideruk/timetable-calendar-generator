@@ -22,6 +22,8 @@ namespace makecal
     public IDictionary<(DateTime, int), string> OverrideDictionary { get; private set; }
     public IDictionary<string, string> RenameDictionary { get; private set; }
 
+    public DaysOptions Days { get; set; } = new DaysOptions();
+
     internal class LessonTime
     {
       public string StartTime {
@@ -34,6 +36,29 @@ namespace makecal
       public int StartHour { get; private set; }
       public int StartMinute { get; private set; }
       public int Duration { get; set; }
+    }
+
+    internal class DaysOptions
+    {
+      public int? Weeks { get; set; }
+      public DateTime? Start { get; set; }
+      public string DaysOfWeek { get; set; }
+      
+      public static readonly DaysOptions Defaults = new DaysOptions()
+      {
+        Weeks = 5,
+        Start = DateTime.Now,
+        DaysOfWeek = DayOfWeekFlags.Weekdays.ToString()
+      };
+
+      public void UseDefaults()
+      {
+        Weeks = Weeks ?? Defaults.Weeks;
+        Start = Start ?? Defaults.Start;
+        DaysOfWeek = DaysOfWeek ?? Defaults.DaysOfWeek;
+      }
+
+      public bool IsSet => Weeks.HasValue || Start.HasValue || DaysOfWeek != null;
     }
   }
 

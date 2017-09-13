@@ -44,8 +44,10 @@ namespace makecal
 
     private static async Task MainAsync()
     {
+#if !DEBUG
       try
       {
+#endif
         Console.Clear();
         Console.CursorVisible = false;
 
@@ -60,9 +62,9 @@ namespace makecal
         var tasks = new List<Task>();
         var throttler = new SemaphoreSlim(initialCount: simultaneousRequests);
 
-        var people = students.Concat(teachers).ToList();
+      var people = students.Concat(teachers).ToList();
 
-        Console.SetBufferSize(Console.BufferWidth, Math.Max(headerHeight + people.Count + 1, Console.BufferHeight));
+      Console.SetBufferSize(Console.BufferWidth, Math.Max(headerHeight + people.Count + 1, Console.BufferHeight));
         
         for (var i = 0; i < people.Count; i++)
         {
@@ -83,7 +85,7 @@ namespace makecal
                   await WriteTimetableAsync(person, settings, line);
                   break;
                 }
-                catch (Google.GoogleApiException) when (attempt < maxAttempts)
+                catch (Google.GoogleApiException e) when (attempt < maxAttempts)
                 {
                   var backoff = retryFirst * (int)Math.Pow(retryExponent, attempt - 1);
                   ConsoleHelper.WriteStatus(line, $"Error. Retrying ({attempt} of {maxAttempts - 1})...", ConsoleColor.DarkYellow);
@@ -105,17 +107,40 @@ namespace makecal
         await Task.WhenAll(tasks);
         Console.SetCursorPosition(0, headerHeight + people.Count);
         Console.WriteLine("\nCalendar generation complete.\n");
+#if !DEBUG
       }
       catch (Exception exc)
       {
         ConsoleHelper.WriteError(exc.Message);
       }
-#if DEBUG
-      finally
-      {
-        Console.ReadKey();
-      }
 #endif
+        Console.ReadKey();
+    }
+
+    private static ICollection<DateTime> GenerateDays(DateTime? start = null, int? weeks = 5, DayOfWeekFlags daysOfWeek = DayOfWeekFlags.Weekdays)
+    {
+      start = start ?? DateTime.Now;
+
+      var startOfWeek = start.Value.GetDayOfWeek(DayOfWeek.Monday);
+
+      var days = daysOfWeek.ToDays();
+
+      var dates = new DateTime[weeks.Value * days.Count];
+      var date = 0;
+
+      for (int week = 0; week < weeks; week++)
+      {
+        var weekDays = startOfWeek.GetDaysOfWeek(daysOfWeek);
+
+        for (int day = 0; day < days.Count; day++)
+        {
+          dates[date++] = weekDays[day];
+        }
+
+        startOfWeek = startOfWeek.AddDays(7);
+      }
+
+      return dates;
     }
 
     private static async Task<Settings> LoadSettingsAsync()
@@ -127,30 +152,54 @@ namespace makecal
       Console.WriteLine($"Reading {keyFileName}");
       settings.ServiceAccountKey = await File.ReadAllTextAsync(keyFileName);
 
-      Console.WriteLine($"Reading {daysFileName}");
-      settings.DayTypes = new Dictionary<DateTime, string>();
-
-      using (var fs = File.Open(daysFileName, FileMode.Open))
-      using (var reader = new CsvReader(fs))
+      if (settings.Days.IsSet)
       {
-        while (reader.HasMoreRecords)
+        settings.Days.UseDefaults();
+
+        Console.WriteLine($"Skipping reading {daysFileName} and generating days instead");
+        DayOfWeekFlags daysOfWeek = DayOfWeekFlags.None;
+        if (!String.IsNullOrWhiteSpace(settings.Days.DaysOfWeek))
         {
-          var record = await reader.ReadDataRecordAsync();
-          if (string.IsNullOrEmpty(record[0])) {
-            continue;
-          }
-          var date = DateTime.ParseExact(record[0], "dd-MMM-yy", null);
-          var dayOfWeek = date.ToString("ddd");
-          if (record.Count > 1)
+          if (!Enum.TryParse(settings.Days.DaysOfWeek, out daysOfWeek))
           {
-            settings.DayTypes.Add(date, record[1] + dayOfWeek);
+            daysOfWeek = DayOfWeekFlags.Weekdays;
           }
-          else
+        }
+        var days = GenerateDays(settings.Days.Start, settings.Days.Weeks, daysOfWeek);
+        settings.DayTypes = days.ToDictionary(day => day, day => day.ToString("ddd"));
+      }
+      else
+      {
+        Console.WriteLine($"Reading {daysFileName}");
+        settings.DayTypes = new Dictionary<DateTime, string>();
+
+        using (var fs = File.Open(daysFileName, FileMode.Open))
+        using (var reader = new CsvReader(fs))
+        {
+          while (reader.HasMoreRecords)
           {
-            settings.DayTypes.Add(date, dayOfWeek);
+            var record = await reader.ReadDataRecordAsync();
+
+            if (string.IsNullOrEmpty(record[0]))
+            {
+              continue;
+            }
+
+            var date = DateTime.ParseExact(record[0], "dd-MMM-yy", null);
+            var dayOfWeek = date.ToString("ddd");
+
+            if (record.Count > 1)
+            {
+              settings.DayTypes.Add(date, record[1] + dayOfWeek);
+            }
+            else
+            {
+              settings.DayTypes.Add(date, dayOfWeek);
+            }
           }
         }
       }
+
       return settings;
     }
 
