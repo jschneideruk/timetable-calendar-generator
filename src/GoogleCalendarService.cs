@@ -71,6 +71,11 @@ namespace makecal
       await batch.ExecuteAsync();
     }
 
+    public async Task DeleteEventsAsync(string calendar, IEnumerable<Event> events)
+    {
+      await DeleteEventsAsync(calendar, events.Select(e => e.Id));
+    }
+
     public async Task InsertEventsAsync(string calendar, IEnumerable<Event> events)
     {
       var batch = new UnlimitedBatch(Service);

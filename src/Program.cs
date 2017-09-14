@@ -19,10 +19,6 @@ namespace makecal
     private static readonly string studentsFileName = @"inputs\students.csv";
     private static readonly string teachersFileName = @"inputs\teachers.csv";
 
-    private static readonly string appName = "makecal";
-    private static readonly string calendarName = "My timetable";
-    private static readonly string calendarColour = "#fbe983";
-
     private static readonly string blankingCode = "Blanking Code";
 
     private static readonly int headerHeight = 10;
@@ -303,13 +299,23 @@ namespace makecal
     {
       var service = new GoogleCalendarService(person.Email);
 
-      var calendarId = await PrepareCalendarAsync(service, line);
+      var calendar = await service.GetTimetableCalendarIdAsync() ?? await service.CreateTimetableCalendarAsync();
+      
+      ConsoleHelper.WriteProgress(line, 1);
+
+      var fields = "id,summary,location,start(dateTime),end(dateTime)";
+      var existing = await service.GetFutureEvents(calendar, DateTime.Today, fields);
+      var expected = CreateExpectedEvents(person, settings);
 
       ConsoleHelper.WriteProgress(line, 2);
 
-      var events = CreateExpectedEvents(person, settings);
+      var comparer = new EventComparer();
 
-      await service.InsertEventsAsync(calendarId, events);
+      var obsolete = existing.Except(expected, comparer);
+      var missing = expected.Except(existing, comparer);
+
+      await service.InsertEventsAsync(calendar, missing);
+      await service.DeleteEventsAsync(calendar, obsolete);
 
       ConsoleHelper.WriteProgress(line, 3);
     }
@@ -405,24 +411,5 @@ namespace makecal
       };
     }
 
-    private static async Task<string> PrepareCalendarAsync(GoogleCalendarService service, int line)
-    {
-      var calendarId = await service.GetTimetableCalendarIdAsync();
-
-      ConsoleHelper.WriteProgress(line, 1);
-
-      if (calendarId == null)
-      {
-        await service.CreateTimetableCalendarAsync();
-      }
-      else
-      {
-        var fields = "id,summary,location,start(dateTime),end(dateTime)";
-        var existingFutureEvents = await service.GetFutureEvents(calendarId, DateTime.Today, fields);
-        await service.DeleteEventsAsync(calendarId, existingFutureEvents.Select(e => e.Id));
-      }
-
-      return calendarId;
-    }
   }
 }
