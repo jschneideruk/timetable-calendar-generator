@@ -4,10 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Google.Apis.Auth.OAuth2;
-using Google.Apis.Calendar.v3;
 using Google.Apis.Calendar.v3.Data;
-using Google.Apis.Services;
 using KBCsv;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -48,65 +45,68 @@ namespace makecal
       try
       {
 #endif
-        Console.Clear();
-        Console.CursorVisible = false;
+      Console.Clear();
+      Console.CursorVisible = false;
 
-        Console.WriteLine("TIMETABLE CALENDAR GENERATOR\n");
+      Console.WriteLine("TIMETABLE CALENDAR GENERATOR\n");
 
-        var settings = await LoadSettingsAsync();
-        var students = await LoadStudentsAsync();
-        var teachers = await LoadTeachersAsync();
+      var settings = await LoadSettingsAsync();
+      var students = await LoadStudentsAsync();
+      var teachers = await LoadTeachersAsync();
 
-        Console.WriteLine("\nSetting up calendars:");
+      GoogleCalendarService.Configure(settings.ServiceAccountKey);
 
-        var tasks = new List<Task>();
-        var throttler = new SemaphoreSlim(initialCount: simultaneousRequests);
+      Console.WriteLine("\nSetting up calendars:");
+
+      var tasks = new List<Task>();
+      var throttler = new SemaphoreSlim(initialCount: simultaneousRequests);
 
       var people = students.Concat(teachers).ToList();
 
       Console.SetBufferSize(Console.BufferWidth, Math.Max(headerHeight + people.Count + 1, Console.BufferHeight));
-        
-        for (var i = 0; i < people.Count; i++)
+
+      for (var i = 0; i < people.Count; i++)
+      {
+        var countLocal = i;
+        await Task.Delay(10);
+        await throttler.WaitAsync();
+        var person = people[countLocal];
+        tasks.Add(Task.Run(async () =>
         {
-          var countLocal = i;
-          await Task.Delay(10);
-          await throttler.WaitAsync();
-          var person = people[countLocal];
-          tasks.Add(Task.Run(async () => {
-            try
+          try
+          {
+            var line = countLocal + headerHeight;
+            ConsoleHelper.WriteDescription(line, $"({countLocal + 1}/{people.Count}) {person.Email}");
+            ConsoleHelper.WriteProgress(line, 0);
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
-              var line = countLocal + headerHeight;
-              ConsoleHelper.WriteDescription(line, $"({countLocal + 1}/{people.Count}) {person.Email}");
-              ConsoleHelper.WriteProgress(line, 0);
-              for (var attempt = 1; attempt <= maxAttempts; attempt++)
+              try
               {
-                try
-                {
-                  await WriteTimetableAsync(person, settings, line);
-                  break;
-                }
-                catch (Google.GoogleApiException e) when (attempt < maxAttempts)
-                {
-                  var backoff = retryFirst * (int)Math.Pow(retryExponent, attempt - 1);
-                  ConsoleHelper.WriteStatus(line, $"Error. Retrying ({attempt} of {maxAttempts - 1})...", ConsoleColor.DarkYellow);
-                  await Task.Delay(backoff);
-                }
-                catch (Exception exc)
-                {
-                  ConsoleHelper.WriteStatus(line, $"Failed. {exc.Message}", ConsoleColor.Red);
-                  break;
-                }
+                await WriteTimetableAsync(person, settings, line);
+                break;
+              }
+              catch (Google.GoogleApiException e) when (attempt < maxAttempts)
+              {
+                var backoff = retryFirst * (int)Math.Pow(retryExponent, attempt - 1);
+                ConsoleHelper.WriteStatus(line, $"Error. Retrying ({attempt} of {maxAttempts - 1})...", ConsoleColor.DarkYellow);
+                await Task.Delay(backoff);
+              }
+              catch (Exception exc)
+              {
+                ConsoleHelper.WriteStatus(line, $"Failed. {exc.Message}", ConsoleColor.Red);
+                break;
               }
             }
-            finally
-            {
-              throttler.Release();
-            }
-          }));
-        }
-        await Task.WhenAll(tasks);
-        Console.SetCursorPosition(0, headerHeight + people.Count);
-        Console.WriteLine("\nCalendar generation complete.\n");
+          }
+          finally
+          {
+            throttler.Release();
+          }
+        }));
+      }
+      await Task.WhenAll(tasks);
+      Console.SetCursorPosition(0, headerHeight + people.Count);
+      Console.WriteLine("\nCalendar generation complete.\n");
 #if !DEBUG
       }
       catch (Exception exc)
@@ -114,7 +114,7 @@ namespace makecal
         ConsoleHelper.WriteError(exc.Message);
       }
 #endif
-        Console.ReadKey();
+      Console.ReadKey();
     }
 
     private static ICollection<DateTime> GenerateDays(DateTime? start = null, int? weeks = 5, DayOfWeekFlags daysOfWeek = DayOfWeekFlags.Weekdays)
@@ -215,7 +215,8 @@ namespace makecal
         Person currentStudent = null;
         string currentSubject = null;
 
-        while (reader.HasMoreRecords) {
+        while (reader.HasMoreRecords)
+        {
 
           var record = await reader.ReadDataRecordAsync();
           if (record[StudentFields.Email] == nameof(StudentFields.Email))
@@ -228,7 +229,8 @@ namespace makecal
             var newEmail = record[StudentFields.Email].ToLower();
             if (currentStudent?.Email != newEmail)
             {
-              currentStudent = new Person {
+              currentStudent = new Person
+              {
                 Email = newEmail,
                 YearGroup = Int32.Parse(record[StudentFields.Year]),
                 Lessons = new List<Lesson>()
@@ -248,7 +250,8 @@ namespace makecal
             throw new InvalidOperationException("Incorrectly formatted timetable.");
           }
 
-          currentStudent.Lessons.Add(new Lesson {
+          currentStudent.Lessons.Add(new Lesson
+          {
             PeriodCode = record[StudentFields.Period],
             Class = currentSubject,
             Room = record[StudentFields.Room],
@@ -282,7 +285,8 @@ namespace makecal
             {
               continue;
             }
-            currentTeacher.Lessons.Add(new Lesson {
+            currentTeacher.Lessons.Add(new Lesson
+            {
               PeriodCode = periodCodes[i],
               Class = timetable[i].Trim(new[] { REPLACEMENT_CHARACTER }),
               Room = rooms[i].Trim(new[] { REPLACEMENT_CHARACTER })
@@ -297,127 +301,125 @@ namespace makecal
 
     private static async Task WriteTimetableAsync(Person person, Settings settings, int line)
     {
-      var service = GetCalendarService(settings.ServiceAccountKey, person.Email);
-      
+      var service = new GoogleCalendarService(person.Email);
+
       var calendarId = await PrepareCalendarAsync(service, line);
+
       ConsoleHelper.WriteProgress(line, 2);
 
-      var batch = new UnlimitedBatch(service);
+      var events = CreateExpectedEvents(person, settings);
 
-      var myStudyLeave = person.YearGroup == null ? new List<StudyLeave>() : settings.StudyLeave.Where(o => o.Year == person.YearGroup);
-      var myLessons = person.Lessons.GroupBy(o => o.PeriodCode).ToDictionary(o => o.Key, o => o.First());
+      await service.InsertEventsAsync(calendarId, events);
 
+      ConsoleHelper.WriteProgress(line, 3);
+    }
+
+    private static IList<Event> CreateExpectedEvents(Person person, Settings settings)
+    {
+      var studyLeaves = person.YearGroup == null ? new List<StudyLeave>() : settings.StudyLeave.Where(o => o.Year == person.YearGroup);
+      var lessons = person.Lessons.GroupBy(o => o.PeriodCode).ToDictionary(o => o.Key, o => o.First());
+      var events = new List<Event>();
       foreach (var dayOfCalendar in settings.DayTypes.Where(o => o.Key >= DateTime.Today))
       {
         var date = dayOfCalendar.Key;
         var dayCode = dayOfCalendar.Value;
-        if (myStudyLeave.Any(o => o.StartDate <= date && o.EndDate >= date))
+        if (studyLeaves.Any(o => o.StartDate <= date && o.EndDate >= date))
         {
           continue;
         }
 
         for (var period = 1; period <= settings.DayTypes.Count; period++)
         {
-          string title = $"P{period}. ";
-          string room;
+          var @event = CreateEvent(period, dayCode, lessons, settings, date, person);
 
-          if (myLessons.TryGetValue($"{dayCode}:{period}", out var lesson) && lesson.Class == blankingCode)
+          if (@event != null)
           {
-            continue;
+            events.Add(@event);
           }
-
-          if (settings.OverrideDictionary.TryGetValue((date, period), out var overrideTitle))
-          {
-            if (string.IsNullOrEmpty(overrideTitle))
-            {
-              continue;
-            }
-            title += overrideTitle;
-            room = null;
-          }
-          else if (lesson != null)
-          {
-            if (person.YearGroup == null)
-            {
-              var classYearGroup = lesson.YearGroup;
-              if (classYearGroup != null && settings.StudyLeave.Any(o => o.Year == classYearGroup && o.StartDate <= date && o.EndDate >= date))
-              {
-                continue;
-              }
-            }
-            var clsName = lesson.Class;
-            if (settings.RenameDictionary.TryGetValue(clsName, out var newTitle))
-            {
-              if (string.IsNullOrEmpty(newTitle))
-              {
-                continue;
-              }
-              clsName = newTitle;
-            }
-            if (clsName == blankingCode)
-            {
-              continue;
-            }
-            title += string.IsNullOrEmpty(lesson.Teacher) ? clsName : $"{clsName} ({lesson.Teacher})";
-            room = lesson.Room;
-          }
-          else
-          {
-            continue;
-          }
-
-          var lessonTime = settings.LessonTimes[period - 1];
-          var start = new DateTime(date.Year, date.Month, date.Day, lessonTime.StartHour, lessonTime.StartMinute, 0);
-          var end = start.AddMinutes(lessonTime.Duration);
-
-          var ev = new Event {
-            Summary = title,
-            Location = room,
-            Start = new EventDateTime { DateTime = start },
-            End = new EventDateTime { DateTime = end }
-          };
-          batch.Queue(service.Events.Insert(ev, calendarId));
-
         }
       }
 
-      await batch.ExecuteAsync();
-      ConsoleHelper.WriteProgress(line, 3);
+      return events;
     }
 
-    private static CalendarService GetCalendarService(string serviceAccountKey, string email)
+    private static Event CreateEvent(int period, string dayCode, IDictionary<string, Lesson> myLessons, Settings settings, DateTime date, Person person)
     {
-      var credential = GoogleCredential.FromJson(serviceAccountKey).CreateScoped(CalendarService.Scope.Calendar).CreateWithUser(email);
+      string title = $"P{period}. ";
+      string room;
 
-      return new CalendarService(new BaseClientService.Initializer {
-        HttpClientInitializer = credential,
-        ApplicationName = appName
-      });
+      if (myLessons.TryGetValue($"{dayCode}:{period}", out var lesson) && lesson.Class == blankingCode)
+      {
+        return null;
+      }
+
+      if (settings.OverrideDictionary.TryGetValue((date, period), out var overrideTitle))
+      {
+        if (string.IsNullOrEmpty(overrideTitle))
+        {
+          return null;
+        }
+        title += overrideTitle;
+        room = null;
+      }
+      else if (lesson != null)
+      {
+        if (person.YearGroup == null)
+        {
+          var classYearGroup = lesson.YearGroup;
+          if (classYearGroup != null && settings.StudyLeave.Any(o => o.Year == classYearGroup && o.StartDate <= date && o.EndDate >= date))
+          {
+            return null;
+          }
+        }
+        var clsName = lesson.Class;
+        if (settings.RenameDictionary.TryGetValue(clsName, out var newTitle))
+        {
+          if (string.IsNullOrEmpty(newTitle))
+          {
+            return null;
+          }
+          clsName = newTitle;
+        }
+        if (clsName == blankingCode)
+        {
+          return null;
+        }
+        title += string.IsNullOrEmpty(lesson.Teacher) ? clsName : $"{clsName} ({lesson.Teacher})";
+        room = lesson.Room;
+      }
+      else
+      {
+        return null;
+      }
+
+      var lessonTime = settings.LessonTimes[period - 1];
+      var start = new DateTime(date.Year, date.Month, date.Day, lessonTime.StartHour, lessonTime.StartMinute, 0);
+      var end = start.AddMinutes(lessonTime.Duration);
+
+      return new Event
+      {
+        Summary = title,
+        Location = room,
+        Start = new EventDateTime { DateTime = start },
+        End = new EventDateTime { DateTime = end }
+      };
     }
 
-    private static async Task<string> PrepareCalendarAsync(CalendarService service, int line)
+    private static async Task<string> PrepareCalendarAsync(GoogleCalendarService service, int line)
     {
-      var calendars = await service.CalendarList.List().ExecuteAsync();
-      var calendarId = calendars.Items.FirstOrDefault(o => o.Summary == calendarName)?.Id;
+      var calendarId = await service.GetTimetableCalendarIdAsync();
 
       ConsoleHelper.WriteProgress(line, 1);
 
       if (calendarId == null)
       {
-        var newCalendar = new Calendar { Summary = calendarName };
-        newCalendar = await service.Calendars.Insert(newCalendar).ExecuteAsync();
-        calendarId = newCalendar.Id;
-        await service.CalendarList.SetColor(calendarId, calendarColour).ExecuteAsync();
+        await service.CreateTimetableCalendarAsync();
       }
       else
       {
-        var existingFutureEvents = await service.Events.List(calendarId).FetchAllAsync(after: DateTime.Today);
-        var batch = new UnlimitedBatch(service);
-        foreach (var existingEvent in existingFutureEvents)
-        {
-          batch.Queue(service.Events.Delete(calendarId, existingEvent.Id));
-        }
-        await batch.ExecuteAsync();
+        var fields = "id,summary,location,start(dateTime),end(dateTime)";
+        var existingFutureEvents = await service.GetFutureEvents(calendarId, DateTime.Today, fields);
+        await service.DeleteEventsAsync(calendarId, existingFutureEvents.Select(e => e.Id));
       }
 
       return calendarId;
