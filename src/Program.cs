@@ -144,7 +144,7 @@ namespace makecal
       Console.WriteLine($"Reading {settingsFileName}");
       var settingsText = await File.ReadAllTextAsync(settingsFileName);
       var settings = JsonConvert.DeserializeObject<Settings>(settingsText, new IsoDateTimeConverter { DateTimeFormat = "dd-MMM-yy" });
-
+      
       Console.WriteLine($"Reading {keyFileName}");
       settings.ServiceAccountKey = await File.ReadAllTextAsync(keyFileName);
 
@@ -322,7 +322,16 @@ namespace makecal
 
     private static IList<Event> CreateExpectedEvents(Person person, Settings settings)
     {
-      var studyLeaves = person.YearGroup == null ? new List<StudyLeave>() : settings.StudyLeave.Where(o => o.Year == person.YearGroup);
+      IEnumerable<StudyLeave> studyLeaves;
+      if (person.YearGroup == null)
+      {
+        studyLeaves = new List<StudyLeave>();
+      }
+      else
+      {
+        studyLeaves = settings.StudyLeave.Where(o => o.Year == null || o.Year == person.YearGroup);
+      }
+
       var lessons = person.Lessons.GroupBy(o => o.PeriodCode).ToDictionary(o => o.Key, o => o.First());
       var events = new List<Event>();
       foreach (var dayOfCalendar in settings.DayTypes.Where(o => o.Key >= DateTime.Today))
