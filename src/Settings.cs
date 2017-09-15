@@ -8,11 +8,17 @@ namespace makecal
   {
     public IList<LessonTime> LessonTimes { get; set; }
     public IList<StudyLeave> StudyLeave { get; set; }
-    public IList<Override> Overrides { set {
+    public IList<Override> Overrides
+    {
+      set
+      {
         OverrideDictionary = value.ToDictionary(o => (o.Date, o.Period), o => o.Title);
       }
     }
-    public IList<Rename> Renames { set {
+    public IList<Rename> Renames
+    {
+      set
+      {
         RenameDictionary = value.ToDictionary(o => o.OriginalTitle, o => o.NewTitle);
       }
     }
@@ -26,8 +32,10 @@ namespace makecal
 
     internal class LessonTime
     {
-      public string StartTime {
-        set {
+      public string StartTime
+      {
+        set
+        {
           var parts = value.Split(':');
           StartHour = int.Parse(parts[0]);
           StartMinute = int.Parse(parts[1]);
@@ -42,8 +50,9 @@ namespace makecal
     {
       public int? Weeks { get; set; }
       public DateTime? Start { get; set; }
+      public DateTime? End { get; set; }
       public string DaysOfWeek { get; set; }
-      
+
       public static readonly DaysOptions Defaults = new DaysOptions()
       {
         Weeks = 5,

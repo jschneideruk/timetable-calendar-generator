@@ -81,7 +81,7 @@ namespace makecal
                 await WriteTimetableAsync(person, settings, line);
                 break;
               }
-              catch (Google.GoogleApiException e) when (attempt < maxAttempts)
+              catch (Google.GoogleApiException) when (attempt < maxAttempts)
               {
                 var backoff = retryFirst * (int)Math.Pow(retryExponent, attempt - 1);
                 ConsoleHelper.WriteStatus(line, $"Error. Retrying ({attempt} of {maxAttempts - 1})...", ConsoleColor.DarkYellow);
@@ -113,27 +113,22 @@ namespace makecal
       Console.ReadKey();
     }
 
-    private static ICollection<DateTime> GenerateDays(DateTime? start = null, int? weeks = 5, DayOfWeekFlags daysOfWeek = DayOfWeekFlags.Weekdays)
+    private static ICollection<DateTime> GenerateDays(DateTime? start = null, DateTime? end = null, int? weeks = 5,
+      DayOfWeekFlags daysOfWeek = DayOfWeekFlags.Weekdays)
     {
-      start = start ?? DateTime.Now;
+      start = start ?? DateTime.Today;
+      end = end ?? DateTime.MaxValue;
 
-      var startOfWeek = start.Value.GetDayOfWeek(DayOfWeek.Monday);
+      var next = daysOfWeek.CalculateDistanceToNextDay();
 
-      var days = daysOfWeek.ToDays();
+      var date = start.Value;
+      var dates = new List<DateTime>();
 
-      var dates = new DateTime[weeks.Value * days.Count];
-      var date = 0;
-
-      for (int week = 0; week < weeks; week++)
+      while ((date - start.Value).TotalDays / 7 < weeks && date <= end)
       {
-        var weekDays = startOfWeek.GetDaysOfWeek(daysOfWeek);
-
-        for (int day = 0; day < days.Count; day++)
-        {
-          dates[date++] = weekDays[day];
-        }
-
-        startOfWeek = startOfWeek.AddDays(7);
+        dates.Add(date);
+        var step = next[date.DayOfWeek];
+        date = date.AddDays(step);
       }
 
       return dates;
@@ -144,7 +139,7 @@ namespace makecal
       Console.WriteLine($"Reading {settingsFileName}");
       var settingsText = await File.ReadAllTextAsync(settingsFileName);
       var settings = JsonConvert.DeserializeObject<Settings>(settingsText, new IsoDateTimeConverter { DateTimeFormat = "dd-MMM-yy" });
-      
+
       Console.WriteLine($"Reading {keyFileName}");
       settings.ServiceAccountKey = await File.ReadAllTextAsync(keyFileName);
 
@@ -161,7 +156,7 @@ namespace makecal
             daysOfWeek = DayOfWeekFlags.Weekdays;
           }
         }
-        var days = GenerateDays(settings.Days.Start, settings.Days.Weeks, daysOfWeek);
+        var days = GenerateDays(settings.Days.Start, settings.Days.End, settings.Days.Weeks, daysOfWeek);
         settings.DayTypes = days.ToDictionary(day => day, day => day.ToString("ddd"));
       }
       else
@@ -300,7 +295,7 @@ namespace makecal
       var service = new GoogleCalendarService(person.Email);
 
       var calendar = await service.GetTimetableCalendarIdAsync() ?? await service.CreateTimetableCalendarAsync();
-      
+
       ConsoleHelper.WriteProgress(line, 1);
 
       var fields = "id,summary,location,start(dateTime),end(dateTime)";
@@ -313,7 +308,7 @@ namespace makecal
 
       var obsolete = existing.Except(expected, comparer);
       var missing = expected.Except(existing, comparer);
-
+      
       await service.InsertEventsAsync(calendar, missing);
       await service.DeleteEventsAsync(calendar, obsolete);
 

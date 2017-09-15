@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace makecal
 {
@@ -61,6 +62,21 @@ namespace makecal
       }
 
       return days;
+    }
+
+    public static IDictionary<DayOfWeek, int> CalculateDistanceToNextDay(this DayOfWeekFlags flags)
+    {
+      var days = flags.ToDays();
+      return Enum.GetValues(typeof(DayOfWeek)).Cast<DayOfWeek>().ToDictionary(d => d,
+        d =>
+        {
+          var value = d;
+          do
+          {
+            value = (int)value == 6 ? 0 : value + 1;
+          } while (!days.Contains(value));
+          return (value <= d ? (int)value + 7 : (int)value) - (int)d;
+        });
     }
   }
 }
