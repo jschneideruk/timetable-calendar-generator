@@ -264,29 +264,77 @@ namespace makecal
       {
         var periodCodes = await reader.ReadDataRecordAsync();
 
-        while (reader.HasMoreRecords)
-        {
-          var timetable = await reader.ReadDataRecordAsync();
-          var rooms = await reader.ReadDataRecordAsync();
-          var currentTeacher = new Person { Email = timetable[0].ToLower(), Lessons = new List<Lesson>() };
+        var first = periodCodes[0];
 
-          for (var i = 1; i < timetable.Count; i++)
+        if (periodCodes[0] == "Work Email" && periodCodes[1] == "Class")
+        {
+          // SIMS report method
+          Person teacher = null;
+          String @class = null;
+
+          while (reader.HasMoreRecords)
           {
-            if (string.IsNullOrEmpty(timetable[i]))
+            var record = await reader.ReadDataRecordAsync();
+
+            if (teacher == null || (record[0] != "" && teacher?.Email != record[0].ToLower()))
+            {
+              teacher = new Person { Email = record[0].ToLower(), Lessons = new List<Lesson>() };
+            }
+
+            if (record[1] != "")
+            {
+              @class = record[1];
+            }
+
+            var period = record[2].Trim(new[] { REPLACEMENT_CHARACTER });
+            var room = record[3].Trim(new[] { REPLACEMENT_CHARACTER });
+
+            if (String.IsNullOrWhiteSpace(period) || String.IsNullOrWhiteSpace(room))
             {
               continue;
             }
-            currentTeacher.Lessons.Add(new Lesson
-            {
-              PeriodCode = periodCodes[i],
-              Class = timetable[i].Trim(new[] { REPLACEMENT_CHARACTER }),
-              Room = rooms[i].Trim(new[] { REPLACEMENT_CHARACTER })
-            });
-          }
 
-          teachers.Add(currentTeacher);
+            teacher.Lessons.Add(new Lesson()
+            {
+              Class = @class,
+              PeriodCode = period,
+              Room = room
+            });
+
+            if (!teachers.Contains(teacher))
+            {
+              teachers.Add(teacher);
+            }
+          }
+        }
+        else
+        {
+          // All staff timetable method
+          while (reader.HasMoreRecords)
+          {
+            var timetable = await reader.ReadDataRecordAsync();
+            var rooms = await reader.ReadDataRecordAsync();
+            var currentTeacher = new Person { Email = timetable[0].ToLower(), Lessons = new List<Lesson>() };
+
+            for (var i = 1; i < timetable.Count; i++)
+            {
+              if (string.IsNullOrEmpty(timetable[i]))
+              {
+                continue;
+              }
+              currentTeacher.Lessons.Add(new Lesson
+              {
+                PeriodCode = periodCodes[i],
+                Class = timetable[i].Trim(new[] { REPLACEMENT_CHARACTER }),
+                Room = rooms[i].Trim(new[] { REPLACEMENT_CHARACTER })
+              });
+            }
+
+            teachers.Add(currentTeacher);
+          }
         }
       }
+
       return teachers;
     }
 
@@ -308,7 +356,7 @@ namespace makecal
 
       var obsolete = existing.Except(expected, comparer);
       var missing = expected.Except(existing, comparer);
-      
+
       await service.InsertEventsAsync(calendar, missing);
       await service.DeleteEventsAsync(calendar, obsolete);
 
