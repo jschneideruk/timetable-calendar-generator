@@ -210,6 +210,7 @@ namespace makecal
         {
 
           var record = await reader.ReadDataRecordAsync();
+
           if (record[StudentFields.Email] == nameof(StudentFields.Email))
           {
             continue;
@@ -316,19 +317,18 @@ namespace makecal
             var rooms = await reader.ReadDataRecordAsync();
             var currentTeacher = new Person { Email = timetable[0].ToLower(), Lessons = new List<Lesson>() };
 
-            for (var i = 1; i < timetable.Count; i++)
+          for (var i = 1; i < timetable.Count; i++)
+          {
+            if (string.IsNullOrEmpty(timetable[i]))
             {
-              if (string.IsNullOrEmpty(timetable[i]))
-              {
-                continue;
-              }
-              currentTeacher.Lessons.Add(new Lesson
-              {
-                PeriodCode = periodCodes[i],
-                Class = timetable[i].Trim(new[] { REPLACEMENT_CHARACTER }),
-                Room = rooms[i].Trim(new[] { REPLACEMENT_CHARACTER })
-              });
+              continue;
             }
+            currentTeacher.Lessons.Add(new Lesson {
+              PeriodCode = periodCodes[i],
+              Class = timetable[i].Trim().TrimEnd(new[] { REPLACEMENT_CHARACTER }),
+              Room = rooms[i].Trim().TrimEnd(new[] { REPLACEMENT_CHARACTER })
+            });
+          }
 
             teachers.Add(currentTeacher);
           }
