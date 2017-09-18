@@ -119,6 +119,11 @@ namespace makecal
       start = start ?? DateTime.Today;
       end = end ?? DateTime.MaxValue;
 
+      if (start < DateTime.Now)
+      {
+        start = DateTime.Today;
+      }
+
       var next = daysOfWeek.CalculateDistanceToNextDay();
 
       var date = start.Value;
@@ -386,7 +391,7 @@ namespace makecal
           continue;
         }
 
-        for (var period = 1; period <= settings.DayTypes.Count; period++)
+        for (var period = 1; period <= settings.LessonTimes.Count; period++)
         {
           var @event = CreateEvent(period, dayCode, lessons, settings, date, person);
 
