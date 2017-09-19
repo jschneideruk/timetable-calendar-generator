@@ -48,6 +48,15 @@ Configure lesson timings, study leave dates and periods to override for all user
 }
 
 ```
+#### studyLeaves
+
+Used to configure days for which no timetable should be generated.
+
+Year (optional): The yeargroup what will be affected. If ommitted, all yeargroups (including teachers) will have a blank timetable on the given days.
+
+startDate: The beginning date of the study-leave.
+
+endDate: The final date of the study-leave.
 
 #### key.json
 
@@ -77,6 +86,7 @@ Each teaching day in the school year, in `dd-MMM-yy` format, followed by a numer
 11-Sep-17,2
 ...
 ```
+
 
 #### students.csv
 
@@ -119,6 +129,78 @@ To create this file in SIMS:
 1. When the spreadsheet opens, delete rows 1-4 which contain the title.
 1. Replace staff names in the left-hand column with their email addresses. You may be able to do this with a `VLOOKUP` formula.
 1. Save as `teachers.csv`
+
+### Automation
+
+#### Automating creation of teachers.csv
+
+Rather than manually creating `teachers.csv` using the steps shown above, you may use the report [SIMS-StaffTimetables.RptDef](resources/SIMS-StaffTimetables.RptDef). **Note:** The resulting `.csv` is not equivalent to the one created above, as it only contains periods that have students in them. This means that 'classes' created by third-party plugins (i.e. a class called 'Meeting') will not be included in the report, dispite showing up in the timetable on SIMS.
+
+Additional permissions may be required to run the report, please ensure that the account running the report has the following permissions, or you may only recieve a partial output:
+
+```
+Curriculum\Academic Basic\View (All)
+Reports\Run
+Staff\Contact Information\View (All)
+Staff\Basic Details\View (All)
+```
+
+This report relies upon each staff member having their work email in SIMS. Hence, for the first run, you may have to manually add their emails into SIMS.
+
+Once you have the report setup and working, you can regularly schedule and automate exporting of staff timetables using `CommandReporter.exe`.
+
+#### Automatically generating days
+
+Instead of using `days.csv`, the values be generated automatically by configuring the `"days"` object within `settings.json`. As holidays may not be manually specified using this approach, they must instead be setup as study-leaves. An example configuration is shown below:
+
+```
+"days": {
+  "start": "18-Sep-17",
+  "end": "24-Jul-18",
+  "weeks": 5,
+  "daysOfWeek": "Weekdays"
+}
+```
+
+`"start"`- The beginning of the range of days to be generated, defaults to today. If the given value is in the past, then today is used instead. Use this value to optionally delay the start of the calendar.
+
+`"end"`- The last day that may be generated. Useful to ensure that the timetable doesn't automatically extend into periods for which study-leaves have not yet been configured.
+
+`"weeks"`- The number of weeks from the start date (or today, whichever is later) for which to generate days. A higher value will increase runtime due to the increase in the number of managed events. Default value is `5`.
+
+`"daysOfWeek"`- A comma-seperated list containing the days of the week that should be generated. Any day of the week not contained in the list will be excluded from the generated days. In addition, this list also accepts the `Weekdays` and `Weekend` shorthands, with a default value of `Weekdays`.
+
+#### Automating SIMS reports (CommandReporter.exe)
+
+Reports can be run from the command-line using `CommandReporter.exe`, which can be found inside any SIMS installation folder.
+Example `.bat` files that uses this executable to export `students.csv` and `teachers.csv` can be found below:
+```
+"%PROGRAMFILES%\SIMS\CommandReporter.exe"
+	/User:<SIMS USERNAME> /Password:<SIMS PASSWORD> 
+	/ServerName:<SIMS SERVER NAME> /DatabaseName:<SIMS DATABASE NAME>
+	/Report:"Student Timetables" /Output:"%CD%\students.csv"
+```
+```
+"%PROGRAMFILES%\SIMS\CommandReporter.exe"
+	/User:<SIMS USERNAME> /Password:<SIMS PASSWORD> 
+	/ServerName:<SIMS SERVER NAME> /DatabaseName:<SIMS DATABASE NAME>
+	/Report:"Export Staff Timetables" /Output:"%CD%\teachers.csv"
+```
+
+The `ServerName` and `DatabaseName` values may be acquired from the `connect.ini` file inside your SIMS installation folder (if your file contains a redirect statement, then simply view the `connect.ini` file at the redirect location instead).
+
+Note that this approach requires the `Username` and `Password` to be stored in a file. Hence, it is recommended that you create a service account in SIMS with the minimal permisisons required to execute the reports. This can be done by creating and assigning a group to the service account with the following permissions:
+
+```
+Curriculum\Academic Basic\View (All)
+Reports\Run
+Staff\Contact Information\View (All)
+Staff\Basic Details\View (All)
+Students\Telephones and Emails\View (All)
+Students\Registration\View (All)
+```
+
+These `.bat` files can then be sheduled to run using Task Scheduler (`taskschd.msc`), along with `dotnet makecal.dll`.
 
 ### Output
 
