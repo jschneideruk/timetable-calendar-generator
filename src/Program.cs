@@ -30,8 +30,11 @@ namespace makecal
 
     private const char REPLACEMENT_CHARACTER = '\ufffd';
 
-    static void Main()
+    private static bool waitForInput = false;
+
+    static void Main(string[] args)
     {
+      waitForInput = args.Any(a => a == "/k" || a == "-k");
       MainAsync().GetAwaiter().GetResult();
     }
 
@@ -110,7 +113,10 @@ namespace makecal
         ConsoleHelper.WriteError(exc.Message);
       }
 #endif
-      Console.ReadKey();
+      if (waitForInput)
+      {
+        Console.ReadKey();
+      }
     }
 
     private static ICollection<DateTime> GenerateDays(DateTime? start = null, DateTime? end = null, int? weeks = 5,
