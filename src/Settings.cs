@@ -27,6 +27,7 @@ namespace makecal
     public IDictionary<DateTime, string> DayTypes { get; set; }
     public IDictionary<(DateTime, int), string> OverrideDictionary { get; private set; }
     public IDictionary<string, string> RenameDictionary { get; private set; }
+    public IList<string> EventTitle { get; set; }
 
     public DaysOptions Days { get; set; } = new DaysOptions();
 

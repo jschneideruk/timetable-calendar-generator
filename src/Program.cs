@@ -154,6 +154,11 @@ namespace makecal
       Console.WriteLine($"Reading {keyFileName}");
       settings.ServiceAccountKey = await File.ReadAllTextAsync(keyFileName);
 
+      if (settings.EventTitle == null)
+      {
+        settings.EventTitle = new List<string>() { "P{{period}}.", "{{class}}", "({{teacher}})" };
+      }
+
       if (settings.Days.IsSet)
       {
         settings.Days.UseDefaults();
@@ -411,6 +416,57 @@ namespace makecal
       return events;
     }
 
+    private static string GetEventTitle(Settings settings, int period, string @class, string teacher, string room)
+    {
+      var components = settings.EventTitle.ToList();
+
+      for (var i = 0; i < components.Count; i++)
+      {
+        if (components[i].Contains("{{period}}"))
+        {
+          components[i] = components[i].Replace("{{period}}", period.ToString());
+        }
+        if (components[i].Contains("{{class}}"))
+        {
+          if (String.IsNullOrWhiteSpace(@class))
+          {
+            components[i] = null;
+            continue;
+          }
+          else
+          {
+            components[i] = components[i].Replace("{{class}}", @class);
+          }
+        }
+        if (components[i].Contains("{{teacher}}"))
+        {
+          if (String.IsNullOrWhiteSpace(teacher))
+          {
+            components[i] = null;
+            continue;
+          }
+          else
+          {
+            components[i] = components[i].Replace("{{teacher}}", teacher);
+          }
+        }
+        if (components[i].Contains("{{room}}"))
+        {
+          if (String.IsNullOrWhiteSpace(room))
+          {
+            components[i] = null;
+            continue;
+          }
+          else
+          {
+            components[i] = components[i].Replace("{{room}}", room);
+          }
+        }
+      }
+
+      return string.Join(' ', components);
+    }
+
     private static Event CreateEvent(int period, string dayCode, IDictionary<string, Lesson> myLessons, Settings settings, DateTime date, Person person)
     {
       string title = $"P{period}. ";
@@ -421,13 +477,14 @@ namespace makecal
         return null;
       }
 
-      if (settings.OverrideDictionary.TryGetValue((date, period), out var overrideTitle))
+      string @class = null, teacher = null;
+
+      if (settings.OverrideDictionary.TryGetValue((date, period), out @class))
       {
-        if (string.IsNullOrEmpty(overrideTitle))
+        if (string.IsNullOrEmpty(@class))
         {
           return null;
         }
-        title += overrideTitle;
         room = null;
       }
       else if (lesson != null)
@@ -440,26 +497,28 @@ namespace makecal
             return null;
           }
         }
-        var clsName = lesson.Class;
-        if (settings.RenameDictionary.TryGetValue(clsName, out var newTitle))
+        @class = lesson.Class;
+        if (settings.RenameDictionary.TryGetValue(@class, out var newTitle))
         {
           if (string.IsNullOrEmpty(newTitle))
           {
             return null;
           }
-          clsName = newTitle;
+          @class = newTitle;
         }
-        if (clsName == blankingCode)
+        if (@class == blankingCode)
         {
           return null;
         }
-        title += string.IsNullOrEmpty(lesson.Teacher) ? clsName : $"{clsName} ({lesson.Teacher})";
+        teacher = lesson.Teacher;
         room = lesson.Room;
       }
       else
       {
         return null;
       }
+
+      title = GetEventTitle(settings, period, @class, teacher, room);
 
       var lessonTime = settings.LessonTimes[period - 1];
       var start = new DateTime(date.Year, date.Month, date.Day, lessonTime.StartHour, lessonTime.StartMinute, 0);
